@@ -1,18 +1,13 @@
 package com.example.cubuk;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
-import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Fireball;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Wither;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -31,7 +26,6 @@ import java.util.UUID;
 public class CubukPlugin extends JavaPlugin implements Listener {
 
     private final Map<UUID, Long> cooldowns = new HashMap<>();
-    private final Map<UUID, Wither> bossBars = new HashMap<>();
     private final long COOLDOWN_MS = 3000L;
     private final String MENU_TITLE = "§8§l» §e§lAteş Çubuğu Menüsü §8§l«";
 
@@ -49,53 +43,60 @@ public class CubukPlugin extends JavaPlugin implements Listener {
 
         Bukkit.getPluginManager().registerEvents(this, this);
 
+        // Cooldown Güncelleyici (Hotbar / XP Bar)
         new BukkitRunnable() {
             @Override
             public void run() {
                 for (UUID uuid : new HashMap<>(cooldowns).keySet()) {
                     Player player = Bukkit.getPlayer(uuid);
+                    
+                    // Oyuncu çıktıysa veya yoksa temizle
                     if (player == null || !player.isOnline()) {
                         cooldowns.remove(uuid);
-                        removeBossBar(uuid);
                         continue;
                     }
 
                     long remaining = cooldowns.get(uuid) - System.currentTimeMillis();
-                    Wither bar = bossBars.get(uuid);
-
-                    if (bar == null || bar.isDead()) {
-                        cooldowns.remove(uuid);
-                        continue;
-                    }
 
                     if (remaining <= 0) {
+                        // Cooldown bitti
                         cooldowns.remove(uuid);
-                        removeBossBar(uuid);
+                        player.setLevel(0);
+                        player.setExp(0f);
                         player.playSound(player.getLocation(), Sound.LEVEL_UP, 0.8f, 1.5f);
                         player.sendMessage("§8§l» §a§lAteş Çubuğu Hazır! §8§l«");
                     } else {
+                        // Cooldown devam ediyor
                         float progress = 1.0f - (remaining / (float) COOLDOWN_MS);
                         if (progress < 0f) progress = 0f;
                         if (progress > 1f) progress = 1f;
-                        bar.setHealth(progress * bar.getMaxHealth());
-
+                        
+                        // XP barını doldur
+                        player.setExp(progress);
+                        
+                        // Seviye olarak kalan saniyeyi göster (yukarı ok / sayı)
                         int seconds = (int) Math.ceil(remaining / 1000.0);
-                        bar.setCustomName("§c§lCooldown: §e" + seconds + "s §8| §7Ateş Çubuğu");
+                        player.setLevel(seconds);
                     }
                 }
             }
-        }.runTaskTimer(this, 0L, 1L);
+        }.runTaskTimer(this, 0L, 1L); // Her tick (saniyede 20 kez)
     }
 
     @Override
     public void onDisable() {
-        for (Wither w : bossBars.values()) {
-            if (w != null && !w.isDead()) w.remove();
+        // Sunucu kapanırken XP barlarını sıfırla
+        for (UUID uuid : cooldowns.keySet()) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player != null && player.isOnline()) {
+                player.setLevel(0);
+                player.setExp(0f);
+            }
         }
-        bossBars.clear();
         cooldowns.clear();
     }
 
+    // ================== MODERN GUI ==================
     private void openWandMenu(Player player) {
         Inventory inv = Bukkit.createInventory(null, 45, MENU_TITLE);
 
@@ -119,7 +120,7 @@ public class CubukPlugin extends JavaPlugin implements Listener {
         inv.setItem(13, createDeco(Material.BLAZE_POWDER, "§6§lAteş Gücü",
                 "§7Bu çubukla ateş topu fırlatabilirsin.",
                 "§7Cooldown: §c3 saniye",
-                "§7BossBar: §aAktif"));
+                "§7Gösterge: §aHotbar"));
 
         inv.setItem(29, createDeco(Material.PAPER, "§a§lBilgi",
                 "§7Çubuğu almak için ortadaki",
@@ -200,6 +201,7 @@ public class CubukPlugin extends JavaPlugin implements Listener {
         return meta.hasDisplayName() && meta.getDisplayName().equals("§e§lAteş Çubuğu");
     }
 
+    // ================== GUI TIKLAMA ==================
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!event.getView().getTitle().equals(MENU_TITLE)) return;
@@ -240,6 +242,7 @@ public class CubukPlugin extends JavaPlugin implements Listener {
         }
     }
 
+    // ================== ÇUBUK KULLANIMI ==================
     @EventHandler
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
@@ -257,65 +260,22 @@ public class CubukPlugin extends JavaPlugin implements Listener {
             }
         }
 
+        // Ateş topunu fırlat
         Fireball fireball = player.launchProjectile(Fireball.class);
         fireball.setIsIncendiary(true);
         fireball.setYield(1.5f);
         player.playSound(player.getLocation(), Sound.GHAST_FIREBALL, 1f, 1f);
         player.sendMessage("§8§l» §cAteş Topu fırlatıldı! §8§l«");
 
+        // Cooldown'ı başlat
         cooldowns.put(player.getUniqueId(), System.currentTimeMillis() + COOLDOWN_MS);
-        spawnBossBar(player);
+        
+        // XP barını hemen doldurmaya başla
+        player.setLevel(3);
+        player.setExp(0f);
     }
 
-    private void spawnBossBar(Player player) {
-        removeBossBar(player.getUniqueId());
-
-        Location loc = player.getLocation().clone().add(0, -500, 0);
-        Wither wither = (Wither) player.getWorld().spawnEntity(loc, EntityType.WITHER);
-        wither.setCustomName("§c§lCooldown: §e3s §8| §7Ateş Çubuğu");
-        wither.setCustomNameVisible(true);
-        wither.setHealth(wither.getMaxHealth());
-        wither.setCanPickupItems(false);
-
-        bossBars.put(player.getUniqueId(), wither);
-
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                Wither w = bossBars.get(player.getUniqueId());
-                if (w == null || w.isDead() || !player.isOnline()) {
-                    cancel();
-                    return;
-                }
-                w.teleport(player.getLocation().clone().add(0, -500, 0));
-            }
-        }.runTaskTimer(this, 0L, 5L);
-    }
-
-    private void removeBossBar(UUID uuid) {
-        Wither w = bossBars.remove(uuid);
-        if (w != null && !w.isDead()) w.remove();
-    }
-
-    @EventHandler
-    public void onWitherDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Wither)) return;
-        if (bossBars.containsValue(event.getEntity())) event.setCancelled(true);
-    }
-
-    @EventHandler
-    public void onWitherHit(EntityDamageByEntityEvent event) {
-        if (!(event.getEntity() instanceof Wither)) return;
-        if (bossBars.containsValue(event.getEntity())) event.setCancelled(true);
-    }
-
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        UUID uuid = event.getPlayer().getUniqueId();
-        cooldowns.remove(uuid);
-        removeBossBar(uuid);
-    }
-
+    // ================== /copeat ==================
     private void removeWands(Player player) {
         int removed = 0;
         for (int i = 0; i < player.getInventory().getSize(); i++) {
