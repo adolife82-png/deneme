@@ -31,12 +31,24 @@ public class CubukPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
+        // Ana komutlar
         getCommand("cubuk").setExecutor((sender, command, label, args) -> {
             if (sender instanceof Player) openWandMenu((Player) sender);
             return true;
         });
 
         getCommand("copeat").setExecutor((sender, command, label, args) -> {
+            if (sender instanceof Player) removeWands((Player) sender);
+            return true;
+        });
+
+        // Kısayol komutları (/c ve /sil)
+        getCommand("c").setExecutor((sender, command, label, args) -> {
+            if (sender instanceof Player) openWandMenu((Player) sender);
+            return true;
+        });
+
+        getCommand("sil").setExecutor((sender, command, label, args) -> {
             if (sender instanceof Player) removeWands((Player) sender);
             return true;
         });
@@ -49,8 +61,7 @@ public class CubukPlugin extends JavaPlugin implements Listener {
             public void run() {
                 for (UUID uuid : new HashMap<>(cooldowns).keySet()) {
                     Player player = Bukkit.getPlayer(uuid);
-                    
-                    // Oyuncu çıktıysa veya yoksa temizle
+
                     if (player == null || !player.isOnline()) {
                         cooldowns.remove(uuid);
                         continue;
@@ -70,17 +81,15 @@ public class CubukPlugin extends JavaPlugin implements Listener {
                         float progress = 1.0f - (remaining / (float) COOLDOWN_MS);
                         if (progress < 0f) progress = 0f;
                         if (progress > 1f) progress = 1f;
-                        
-                        // XP barını doldur
+
                         player.setExp(progress);
-                        
-                        // Seviye olarak kalan saniyeyi göster (yukarı ok / sayı)
+
                         int seconds = (int) Math.ceil(remaining / 1000.0);
                         player.setLevel(seconds);
                     }
                 }
             }
-        }.runTaskTimer(this, 0L, 1L); // Her tick (saniyede 20 kez)
+        }.runTaskTimer(this, 0L, 1L);
     }
 
     @Override
@@ -148,7 +157,7 @@ public class CubukPlugin extends JavaPlugin implements Listener {
                 "§8§m----------------",
                 "§7Envanterinde zaten Ateş Çubuğu var.",
                 "§7Tekrar almak için önce",
-                "§7§f/copeat §7yazmalısın.",
+                "§7§f/sil §7yazmalısın.",
                 "§8§m----------------"
         ));
         item.setItemMeta(meta);
@@ -213,7 +222,7 @@ public class CubukPlugin extends JavaPlugin implements Listener {
 
         if (event.getCurrentItem().getType() == Material.BARRIER) {
             player.playSound(player.getLocation(), Sound.VILLAGER_NO, 0.8f, 1f);
-            player.sendMessage("§8§l» §cZaten bir Ateş Çubuğun var! §7Sil: §f/copeat");
+            player.sendMessage("§8§l» §cZaten bir Ateş Çubuğun var! §7Sil: §f/sil");
             return;
         }
 
@@ -221,7 +230,7 @@ public class CubukPlugin extends JavaPlugin implements Listener {
 
         if (playerHasWand(player)) {
             player.playSound(player.getLocation(), Sound.VILLAGER_NO, 0.8f, 1f);
-            player.sendMessage("§8§l» §cZaten bir Ateş Çubuğun var! §7Sil: §f/copeat");
+            player.sendMessage("§8§l» §cZaten bir Ateş Çubuğun var! §7Sil: §f/sil");
             player.closeInventory();
             return;
         }
@@ -269,13 +278,23 @@ public class CubukPlugin extends JavaPlugin implements Listener {
 
         // Cooldown'ı başlat
         cooldowns.put(player.getUniqueId(), System.currentTimeMillis() + COOLDOWN_MS);
-        
+
         // XP barını hemen doldurmaya başla
         player.setLevel(3);
         player.setExp(0f);
     }
 
-    // ================== /copeat ==================
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        cooldowns.remove(uuid);
+        // Oyuncu çıkarken XP barını sıfırla
+        Player player = event.getPlayer();
+        player.setLevel(0);
+        player.setExp(0f);
+    }
+
+    // ================== /copeat ve /sil ==================
     private void removeWands(Player player) {
         int removed = 0;
         for (int i = 0; i < player.getInventory().getSize(); i++) {
