@@ -9,3 +9,9 @@ commands:
   copeat:
     description: Envanterdeki ozel cubuklari siler.
     usage: /copeat
+  c:
+    description: Cubuk menusunu acar (Kisa yol).
+    usage: /c
+  sil:
+    description: Envanterdeki ozel cubuklari siler (Kisa yol).
+    usage: /sil
