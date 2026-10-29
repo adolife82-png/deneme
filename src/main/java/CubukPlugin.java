@@ -4,7 +4,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Fireball;
 import org.bukkit.entity.Player;
@@ -23,7 +22,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.util.Vector;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -51,7 +49,6 @@ public class CubukPlugin extends JavaPlugin implements Listener {
 
         Bukkit.getPluginManager().registerEvents(this, this);
 
-        // Cooldown güncelleme görevi (her tick)
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -72,13 +69,11 @@ public class CubukPlugin extends JavaPlugin implements Listener {
                     }
 
                     if (remaining <= 0) {
-                        // Cooldown bitti - bossbar'ı kaldır
                         cooldowns.remove(uuid);
                         removeBossBar(uuid);
                         player.playSound(player.getLocation(), Sound.LEVEL_UP, 0.8f, 1.5f);
                         player.sendMessage("§8§l» §a§lAteş Çubuğu Hazır! §8§l«");
                     } else {
-                        // Bossbar'ı doldur (1.0 = dolu, 0.0 = boş)
                         float progress = 1.0f - (remaining / (float) COOLDOWN_MS);
                         if (progress < 0f) progress = 0f;
                         if (progress > 1f) progress = 1f;
@@ -89,12 +84,11 @@ public class CubukPlugin extends JavaPlugin implements Listener {
                     }
                 }
             }
-        }.runTaskTimer(this, 0L, 1L); // Her tick
+        }.runTaskTimer(this, 0L, 1L);
     }
 
     @Override
     public void onDisable() {
-        // Tüm bossbarları temizle
         for (Wither w : bossBars.values()) {
             if (w != null && !w.isDead()) w.remove();
         }
@@ -121,6 +115,8 @@ public class CubukPlugin extends JavaPlugin implements Listener {
             if (i % 9 != 0 && i % 9 != 8) inv.setItem(i, inner);
         }
 
+        boolean hasWand = playerHasWand(player);
+
         inv.setItem(13, createDeco(Material.BLAZE_POWDER, "§6§lAteş Gücü",
                 "§7Bu çubukla ateş topu fırlatabilirsin.",
                 "§7Cooldown: §c3 saniye",
@@ -134,10 +130,37 @@ public class CubukPlugin extends JavaPlugin implements Listener {
                 "§7Çubuk 3 saniyede bir ateş topu",
                 "§7fırlatabilir."));
 
-        inv.setItem(22, createWand());
+        // Envanterde çubuk varsa "zaten var" göster, yoksa normal çubuk göster
+        if (hasWand) {
+            inv.setItem(22, createAlreadyHaveItem());
+        } else {
+            inv.setItem(22, createWand());
+        }
 
         player.playSound(player.getLocation(), Sound.NOTE_PLING, 1f, 1.5f);
         player.openInventory(inv);
+    }
+
+    private ItemStack createAlreadyHaveItem() {
+        ItemStack item = new ItemStack(Material.BARRIER);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName("§c§lZaten Bir Çubuğun Var!");
+        meta.setLore(Arrays.asList(
+                "§8§m----------------",
+                "§7Envanterinde zaten Ateş Çubuğu var.",
+                "§7Tekrar almak için önce",
+                "§7§f/copeat §7yazmalısın.",
+                "§8§m----------------"
+        ));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private boolean playerHasWand(Player player) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (isWand(item)) return true;
+        }
+        return false;
     }
 
     private ItemStack createGlass(short data) {
@@ -185,14 +208,32 @@ public class CubukPlugin extends JavaPlugin implements Listener {
         if (!event.getView().getTitle().equals(MENU_TITLE)) return;
         event.setCancelled(true);
 
-        if (event.getCurrentItem() != null && isWand(event.getCurrentItem())) {
-            Player player = (Player) event.getWhoClicked();
-            player.playSound(player.getLocation(), Sound.CLICK, 1f, 1.2f);
-            player.closeInventory();
-            player.getInventory().addItem(createWand());
-            player.playSound(player.getLocation(), Sound.LEVEL_UP, 0.8f, 1.4f);
-            player.sendMessage("§8§l» §aAteş Çubuğu envanterine eklendi! §8§l«");
+        if (event.getCurrentItem() == null) return;
+
+        Player player = (Player) event.getWhoClicked();
+
+        // Zaten çubuk varsa engelle
+        if (event.getCurrentItem().getType() == Material.BARRIER) {
+            player.playSound(player.getLocation(), Sound.VILLAGER_NO, 0.8f, 1f);
+            player.sendMessage("§8§l» §cZaten bir Ateş Çubuğun var! §7Sil: §f/copeat");
+            return;
         }
+
+        if (!isWand(event.getCurrentItem())) return;
+
+        // Çift kontrol: envanterde çubuk var mı?
+        if (playerHasWand(player)) {
+            player.playSound(player.getLocation(), Sound.VILLAGER_NO, 0.8f, 1f);
+            player.sendMessage("§8§l» §cZaten bir Ateş Çubuğun var! §7Sil: §f/copeat");
+            player.closeInventory();
+            return;
+        }
+
+        player.playSound(player.getLocation(), Sound.CLICK, 1f, 1.2f);
+        player.closeInventory();
+        player.getInventory().addItem(createWand());
+        player.playSound(player.getLocation(), Sound.LEVEL_UP, 0.8f, 1.4f);
+        player.sendMessage("§8§l» §aAteş Çubuğu envanterine eklendi! §8§l«");
     }
 
     @EventHandler
@@ -222,25 +263,21 @@ public class CubukPlugin extends JavaPlugin implements Listener {
             }
         }
 
-        // Ateş topunu fırlat
         Fireball fireball = player.launchProjectile(Fireball.class);
         fireball.setIsIncendiary(true);
         fireball.setYield(1.5f);
         player.playSound(player.getLocation(), Sound.GHAST_FIREBALL, 1f, 1f);
         player.sendMessage("§8§l» §cAteş Topu fırlatıldı! §8§l«");
 
-        // Cooldown başlat
         cooldowns.put(player.getUniqueId(), System.currentTimeMillis() + COOLDOWN_MS);
         spawnBossBar(player);
     }
 
-    // ================== BOSSBAR (Wither Trick) ==================
+    // ================== BOSSBAR ==================
     private void spawnBossBar(Player player) {
-        // Önceki varsa kaldır
         removeBossBar(player.getUniqueId());
 
-        Location loc = player.getLocation().clone().add(0, -500, 0); // yerin çok altına
-
+        Location loc = player.getLocation().clone().add(0, -500, 0);
         Wither wither = (Wither) player.getWorld().spawnEntity(loc, EntityType.WITHER);
         wither.setCustomName("§c§lCooldown: §e3s §8| §7Ateş Çubuğu");
         wither.setCustomNameVisible(true);
@@ -249,7 +286,6 @@ public class CubukPlugin extends JavaPlugin implements Listener {
         wither.setSilent(true);
         wither.setCanPickupItems(false);
 
-        // BossBar'ı sadece sahibine göster (diğer oyunculara görünmez yap)
         for (Player online : Bukkit.getOnlinePlayers()) {
             if (!online.equals(player)) {
                 online.hideEntity(this, wither);
@@ -258,7 +294,6 @@ public class CubukPlugin extends JavaPlugin implements Listener {
 
         bossBars.put(player.getUniqueId(), wither);
 
-        // Wither'ı oyuncunun üstüne teleport et (görünmesin diye çok aşağıda tut)
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -267,7 +302,6 @@ public class CubukPlugin extends JavaPlugin implements Listener {
                     cancel();
                     return;
                 }
-                // Görünmez kıl (yerin altında tut)
                 w.teleport(player.getLocation().clone().add(0, -500, 0));
             }
         }.runTaskTimer(this, 0L, 5L);
@@ -275,29 +309,21 @@ public class CubukPlugin extends JavaPlugin implements Listener {
 
     private void removeBossBar(UUID uuid) {
         Wither w = bossBars.remove(uuid);
-        if (w != null && !w.isDead()) {
-            w.remove();
-        }
+        if (w != null && !w.isDead()) w.remove();
     }
 
-    // Wither'ın hasar almasını engelle (yanlışlıkla vurulmasın)
     @EventHandler
     public void onWitherDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Wither)) return;
-        if (bossBars.containsValue(event.getEntity())) {
-            event.setCancelled(true);
-        }
+        if (bossBars.containsValue(event.getEntity())) event.setCancelled(true);
     }
 
     @EventHandler
     public void onWitherHit(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Wither)) return;
-        if (bossBars.containsValue(event.getEntity())) {
-            event.setCancelled(true);
-        }
+        if (bossBars.containsValue(event.getEntity())) event.setCancelled(true);
     }
 
-    // Oyuncu çıkarsa bossbar'ı temizle
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
