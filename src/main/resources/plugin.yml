@@ -1,17 +1,14 @@
 name: CubukPlugin
 version: 1.0
-main: com.example.cubuk.CubukPlugin
+main: com.cubuk.plugin.CubukPlugin
 api-version: 1.8
+author: oxydevv
 commands:
   cubuk:
     description: Cubuk menusunu acar.
     usage: /cubuk
+    aliases: [c]
   copeat:
-    description: Envanterdeki ozel cubuklari siler.
+    description: Cubuk silme menusunu acar.
     usage: /copeat
-  c:
-    description: Cubuk menusunu acar (Kisa yol).
-    usage: /c
-  sil:
-    description: Envanterdeki ozel cubuklari siler (Kisa yol).
-    usage: /sil
+    aliases: [sil]
