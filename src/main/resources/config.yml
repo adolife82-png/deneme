@@ -1,0 +1,4 @@
+# Cubuk ayarlari
+cooldown-seconds: 3
+fireball-yield: 1.5
+fireball-incendiary: true
